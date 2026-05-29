@@ -122,31 +122,84 @@
   <!-- Full-width ranked results -->
   <section id="results-section" class="w-full border-t border-slate-200 bg-white mt-2">
     <div class="px-4 sm:px-6 lg:px-8 py-8">
-      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
-        <div>
-          <h2 class="text-xl font-bold text-slate-900 tracking-tight">Ranked Results</h2>
-          <p id="results-subtitle" class="text-sm text-slate-500 mt-1">Candidates ranked by AI match score</p>
+      <!-- Active job context -->
+      <div id="results-job-context" class="mb-4 hidden">
+        <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-indigo-50 border border-indigo-100">
+          <span class="text-xs font-semibold uppercase tracking-wide text-indigo-500">Active Job</span>
+          <span id="results-active-job-title" class="text-sm font-semibold text-indigo-900"></span>
         </div>
-        <button id="btn-refresh-results" class="arm-btn arm-btn-secondary text-sm">↻ Refresh</button>
       </div>
-      <div class="arm-results-wrap rounded-xl border border-slate-200">
-        <table class="arm-results-table w-full" id="results-table">
-          <thead>
-            <tr>
-              <th class="w-12"></th>
-              <th>Candidate</th>
-              <th>Email</th>
-              <th>Location</th>
-              <th>Score</th>
-              <th>Recommended</th>
-              <th>Summary</th>
-              <th>Resume</th>
-            </tr>
-          </thead>
-          <tbody id="results-body">
-            <tr><td colspan="8" class="arm-empty">No evaluations yet. Import resumes and run Analyze to see ranked results.</td></tr>
-          </tbody>
-        </table>
+
+      <div id="results-no-job" class="arm-empty arm-card mb-6 hidden">
+        Select a job above to view ranked candidates for that role.
+      </div>
+
+      <div id="results-content" class="hidden">
+        <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-4">
+          <div>
+            <h2 class="text-xl font-bold text-slate-900 tracking-tight">Ranked Results</h2>
+            <p id="results-subtitle" class="text-sm text-slate-500 mt-1">Candidates ranked by AI match score</p>
+          </div>
+          <button id="btn-refresh-results" class="arm-btn arm-btn-secondary text-sm shrink-0">↻ Refresh</button>
+        </div>
+
+        <!-- Job stats -->
+        <div id="results-stats" class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5"></div>
+
+        <!-- Search + quick filters -->
+        <div class="arm-results-toolbar mb-4 space-y-3">
+          <div class="flex flex-col sm:flex-row gap-3">
+            <input type="search" id="filter-global-search" class="arm-input flex-1"
+                   placeholder="Search names, summaries, strengths, weaknesses…">
+            <button type="button" id="btn-clear-filters" class="arm-btn arm-btn-secondary text-sm whitespace-nowrap">Clear filters</button>
+          </div>
+          <div class="flex flex-wrap gap-2" id="quick-filters">
+            <button type="button" class="arm-quick-filter" data-filter="recommended">Recommended only</button>
+            <button type="button" class="arm-quick-filter" data-filter="score4">Score ≥ 4</button>
+            <button type="button" class="arm-quick-filter" data-filter="weak">Weak matches</button>
+            <button type="button" class="arm-quick-filter" data-filter="processing">Processing</button>
+          </div>
+          <p id="results-filter-count" class="text-xs text-slate-500"></p>
+        </div>
+
+        <div class="arm-results-wrap rounded-xl border border-slate-200">
+          <table class="arm-results-table w-full" id="results-table">
+            <thead>
+              <tr class="arm-sort-row">
+                <th class="w-12"></th>
+                <th><button type="button" class="arm-sort-btn" data-sort="display_name">Candidate <span class="arm-sort-icon"></span></button></th>
+                <th><button type="button" class="arm-sort-btn" data-sort="overall_score">Overall <span class="arm-sort-icon"></span></button></th>
+                <th><button type="button" class="arm-sort-btn" data-sort="recommended">Rec. <span class="arm-sort-icon"></span></button></th>
+                <th><button type="button" class="arm-sort-btn" data-sort="skills_match">Skills <span class="arm-sort-icon"></span></button></th>
+                <th><button type="button" class="arm-sort-btn" data-sort="experience_match">Exp. <span class="arm-sort-icon"></span></button></th>
+                <th><button type="button" class="arm-sort-btn" data-sort="seniority_match">Senior <span class="arm-sort-icon"></span></button></th>
+                <th><button type="button" class="arm-sort-btn" data-sort="education_match">Edu. <span class="arm-sort-icon"></span></button></th>
+                <th>Summary</th>
+                <th>Resume</th>
+              </tr>
+              <tr class="arm-filter-row">
+                <th></th>
+                <th><input type="text" id="filter-name" class="arm-col-filter" placeholder="Filter…"></th>
+                <th><input type="number" id="filter-overall-min" class="arm-col-filter" placeholder="Min" min="1" max="5" step="0.1"></th>
+                <th>
+                  <select id="filter-recommended" class="arm-col-filter">
+                    <option value="">All</option>
+                    <option value="yes">Yes</option>
+                    <option value="no">No</option>
+                  </select>
+                </th>
+                <th><input type="number" id="filter-skills-min" class="arm-col-filter" placeholder="Min" min="1" max="5" step="1"></th>
+                <th><input type="number" id="filter-exp-min" class="arm-col-filter" placeholder="Min" min="1" max="5" step="1"></th>
+                <th><input type="number" id="filter-senior-min" class="arm-col-filter" placeholder="Min" min="1" max="5" step="1"></th>
+                <th><input type="number" id="filter-edu-min" class="arm-col-filter" placeholder="Min" min="1" max="5" step="1"></th>
+                <th colspan="2"></th>
+              </tr>
+            </thead>
+            <tbody id="results-body">
+              <tr><td colspan="10" class="arm-empty">No evaluations yet.</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   </section>

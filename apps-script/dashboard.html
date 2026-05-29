@@ -13,7 +13,20 @@
     modelsLoaded: false,
     processingPhase: 'idle',
     evalTracking: false,
-    knownEvalIds: {}
+    knownEvalIds: {},
+    resultsFilters: {
+      globalSearch: '',
+      name: '',
+      overallMin: '',
+      recommended: '',
+      skillsMin: '',
+      expMin: '',
+      seniorMin: '',
+      eduMin: '',
+      sortKey: 'overall_score',
+      sortDir: 'desc',
+      quick: {}
+    }
   };
 
   function run(fnName) {
@@ -235,6 +248,183 @@
     $('btn-import').disabled = !state.selectedJobId;
   }
 
+  function getActiveJob() {
+    return state.jobs.find(function (j) { return j.job_id === state.selectedJobId; }) || null;
+  }
+
+  function defaultResultsFilters() {
+    return {
+      globalSearch: '',
+      name: '',
+      overallMin: '',
+      recommended: '',
+      skillsMin: '',
+      expMin: '',
+      seniorMin: '',
+      eduMin: '',
+      sortKey: 'overall_score',
+      sortDir: 'desc',
+      quick: {}
+    };
+  }
+
+  function resetResultsFilters() {
+    state.resultsFilters = defaultResultsFilters();
+    syncFiltersToUI();
+    document.querySelectorAll('.arm-quick-filter').forEach(function (btn) {
+      btn.classList.remove('active');
+    });
+  }
+
+  function syncFiltersToUI() {
+    var f = state.resultsFilters;
+    $('filter-global-search').value = f.globalSearch;
+    $('filter-name').value = f.name;
+    $('filter-overall-min').value = f.overallMin;
+    $('filter-recommended').value = f.recommended;
+    $('filter-skills-min').value = f.skillsMin;
+    $('filter-exp-min').value = f.expMin;
+    $('filter-senior-min').value = f.seniorMin;
+    $('filter-edu-min').value = f.eduMin;
+    document.querySelectorAll('.arm-sort-btn').forEach(function (btn) {
+      var key = btn.getAttribute('data-sort');
+      var icon = btn.querySelector('.arm-sort-icon');
+      btn.classList.toggle('active', key === f.sortKey);
+      if (icon) {
+        icon.textContent = key === f.sortKey ? (f.sortDir === 'asc' ? '↑' : '↓') : '';
+      }
+    });
+    Object.keys(f.quick || {}).forEach(function (k) {
+      if (f.quick[k]) {
+        var el = document.querySelector('.arm-quick-filter[data-filter="' + k + '"]');
+        if (el) el.classList.add('active');
+      }
+    });
+  }
+
+  function syncFiltersFromUI() {
+    var f = state.resultsFilters;
+    f.globalSearch = $('filter-global-search').value.trim().toLowerCase();
+    f.name = $('filter-name').value.trim().toLowerCase();
+    f.overallMin = $('filter-overall-min').value;
+    f.recommended = $('filter-recommended').value;
+    f.skillsMin = $('filter-skills-min').value;
+    f.expMin = $('filter-exp-min').value;
+    f.seniorMin = $('filter-senior-min').value;
+    f.eduMin = $('filter-edu-min').value;
+  }
+
+  function numMin(val, field) {
+    if (val === '' || val === null || val === undefined) return true;
+    return Number(field) >= Number(val);
+  }
+
+  function getPendingEvalCandidates() {
+    var evalIds = {};
+    state.evaluations.forEach(function (e) { evalIds[e.candidate_id] = true; });
+    return state.candidates.filter(function (c) {
+      return String(c.parsed_text || '').trim() && !evalIds[c.candidate_id];
+    });
+  }
+
+  function applyFiltersToEvaluations(list) {
+    syncFiltersFromUI();
+    var f = state.resultsFilters;
+    var q = f.quick || {};
+
+    return list.filter(function (r) {
+      if (q.recommended && !r.recommended) return false;
+      if (q.score4 && Number(r.overall_score) < 4) return false;
+      if (q.weak && !(Number(r.overall_score) < 3 || !r.recommended)) return false;
+      if (q.processing) return false;
+
+      if (f.name && String(r.display_name || '').toLowerCase().indexOf(f.name) === -1) return false;
+      if (!numMin(f.overallMin, r.overall_score)) return false;
+      if (!numMin(f.skillsMin, r.skills_match)) return false;
+      if (!numMin(f.expMin, r.experience_match)) return false;
+      if (!numMin(f.seniorMin, r.seniority_match)) return false;
+      if (!numMin(f.eduMin, r.education_match)) return false;
+      if (f.recommended === 'yes' && !r.recommended) return false;
+      if (f.recommended === 'no' && r.recommended) return false;
+
+      if (f.globalSearch) {
+        var hay = [
+          r.display_name, r.summary,
+          (r.strengths || []).join(' '),
+          (r.weaknesses || []).join(' ')
+        ].join(' ').toLowerCase();
+        if (hay.indexOf(f.globalSearch) === -1) return false;
+      }
+      return true;
+    });
+  }
+
+  function applySortToEvaluations(list) {
+    var f = state.resultsFilters;
+    var key = f.sortKey || 'overall_score';
+    var dir = f.sortDir === 'asc' ? 1 : -1;
+    return list.slice().sort(function (a, b) {
+      var av = a[key];
+      var bv = b[key];
+      if (key === 'recommended') {
+        av = a.recommended ? 1 : 0;
+        bv = b.recommended ? 1 : 0;
+      }
+      if (key === 'display_name') {
+        av = String(av || '').toLowerCase();
+        bv = String(bv || '').toLowerCase();
+        if (av < bv) return -dir;
+        if (av > bv) return dir;
+        return 0;
+      }
+      av = Number(av) || 0;
+      bv = Number(bv) || 0;
+      return (av - bv) * dir;
+    });
+  }
+
+  function scoreSmClass(score) {
+    var s = Number(score);
+    if (s >= 4) return 'arm-score-sm score-badge-high';
+    if (s >= 3) return 'arm-score-sm score-badge-mid';
+    return 'arm-score-sm score-badge-low';
+  }
+
+  function renderResultsContext() {
+    var hasJob = !!state.selectedJobId;
+    $('results-no-job').classList.toggle('hidden', hasJob);
+    $('results-content').classList.toggle('hidden', !hasJob);
+    $('results-job-context').classList.toggle('hidden', !hasJob);
+    if (!hasJob) return;
+    var job = getActiveJob();
+    $('results-active-job-title').textContent = job
+      ? job.title
+      : state.selectedJobId;
+  }
+
+  function renderResultsStats() {
+    var el = $('results-stats');
+    var evals = state.evaluations;
+    var count = evals.length;
+    var avg = count
+      ? (evals.reduce(function (s, e) { return s + Number(e.overall_score); }, 0) / count).toFixed(1)
+      : '—';
+    var recCount = evals.filter(function (e) { return e.recommended; }).length;
+    var pending = getPendingEvalCandidates().length;
+    el.innerHTML =
+      '<div class="arm-stat-card"><div class="label">Evaluated</div><div class="value">' + count + '</div></div>' +
+      '<div class="arm-stat-card"><div class="label">Avg Score</div><div class="value">' + avg + '</div></div>' +
+      '<div class="arm-stat-card"><div class="label">Recommended</div><div class="value">' + recCount + '</div></div>' +
+      '<div class="arm-stat-card"><div class="label">In Queue</div><div class="value">' + pending + '</div></div>';
+  }
+
+  function renderResultsPanel() {
+    renderResultsContext();
+    if (!state.selectedJobId) return;
+    renderResultsStats();
+    renderResults();
+  }
+
   function renderCandidates() {
     var body = $('candidates-body');
     $('candidates-count').textContent = state.candidates.length
@@ -270,21 +460,21 @@
   }
 
   function renderSkeletonRows() {
-    if (state.processingPhase !== 'evaluate') return '';
-    var evalIds = {};
-    state.evaluations.forEach(function (e) { evalIds[e.candidate_id] = true; });
-    var pending = state.candidates.filter(function (c) {
-      return String(c.parsed_text || '').trim() && !evalIds[c.candidate_id];
-    });
+    var f = state.resultsFilters;
+    if (state.processingPhase !== 'evaluate' && !(f.quick && f.quick.processing)) return '';
+    var pending = getPendingEvalCandidates();
+    if (f.quick && f.quick.processing) {
+      // only processing filter active — show all pending
+    } else if (f.globalSearch || f.name || Object.keys(f.quick || {}).some(function (k) {
+      return k !== 'processing' && f.quick[k];
+    })) {
+      return '';
+    }
     return pending.map(function (c) {
       return '<tr class="opacity-70">' +
-        '<td><div class="arm-skeleton w-16 mx-auto"></div></td>' +
+        '<td></td>' +
         '<td><div class="flex items-center gap-2"><span class="arm-spinner text-indigo-500"></span><span class="text-slate-500 text-sm">' + escapeHtml(c.display_name || c.first_name) + '</span></div></td>' +
-        '<td><div class="arm-skeleton w-32"></div></td>' +
-        '<td><div class="arm-skeleton w-24"></div></td>' +
-        '<td><div class="arm-skeleton w-16"></div></td>' +
-        '<td><div class="arm-skeleton w-16"></div></td>' +
-        '<td><div class="arm-skeleton w-full"></div></td>' +
+        '<td colspan="7"><div class="arm-skeleton w-full max-w-xs"></div></td>' +
         '<td></td></tr>';
     }).join('');
   }
@@ -292,34 +482,62 @@
   function renderResults() {
     var body = $('results-body');
     var subtitle = $('results-subtitle');
-    var evalCount = state.evaluations.length;
+    var COLS = 10;
+    var filtered = applySortToEvaluations(applyFiltersToEvaluations(state.evaluations));
+    var showProcessingOnly = state.resultsFilters.quick && state.resultsFilters.quick.processing;
 
-    subtitle.textContent = evalCount
-      ? evalCount + ' candidate' + (evalCount === 1 ? '' : 's') + ' ranked by AI match score'
-      : 'Candidates ranked by AI match score';
+    subtitle.textContent = state.evaluations.length
+      ? 'Showing ' + filtered.length + ' of ' + state.evaluations.length + ' evaluated candidates'
+      : 'Import resumes and run Analyze to see ranked results';
 
-    if (!evalCount && state.processingPhase !== 'evaluate') {
-      body.innerHTML = '<tr><td colspan="8" class="arm-empty">No evaluations yet. Import resumes and run Analyze to see ranked results.</td></tr>';
+    $('results-filter-count').textContent = filtered.length !== state.evaluations.length
+      ? filtered.length + ' matching filter(s) · ' + state.evaluations.length + ' total for this job'
+      : state.evaluations.length
+        ? state.evaluations.length + ' candidate(s) for this job'
+        : '';
+
+    if (showProcessingOnly) {
+      var pending = getPendingEvalCandidates();
+      if (!pending.length) {
+        body.innerHTML = '<tr><td colspan="' + COLS + '" class="arm-empty">No candidates currently processing.</td></tr>';
+        return;
+      }
+      body.innerHTML = pending.map(function (c) {
+        return '<tr class="opacity-80">' +
+          '<td></td>' +
+          '<td class="font-medium text-slate-600">' + escapeHtml(c.display_name || c.first_name) + '</td>' +
+          '<td colspan="7"><span class="inline-flex items-center gap-2 text-sm text-indigo-600"><span class="arm-spinner"></span>Evaluating…</span></td>' +
+          '<td><a class="text-indigo-600 text-sm" href="' + escapeHtml(c.resume_url) + '" target="_blank">View</a></td></tr>';
+      }).join('');
       return;
     }
 
-    var rowsHtml = state.evaluations.map(function (r, idx) {
+    if (!filtered.length && state.processingPhase !== 'evaluate') {
+      body.innerHTML = '<tr><td colspan="' + COLS + '" class="arm-empty">' +
+        (state.evaluations.length ? 'No candidates match your filters.' : 'No evaluations yet for this job.') +
+        '</td></tr>';
+      return;
+    }
+
+    var rowsHtml = filtered.map(function (r) {
       var isNew = !state.knownEvalIds[r.evaluation_id];
       state.knownEvalIds[r.evaluation_id] = true;
       var rec = r.recommended
         ? '<span class="arm-rec-badge-yes">Yes</span>'
         : '<span class="arm-rec-badge-no">No</span>';
       var summary = escapeHtml(r.summary || '');
-      if (summary.length > 140) summary = summary.slice(0, 137) + '…';
+      if (summary.length > 100) summary = summary.slice(0, 97) + '…';
 
-      return '<tr class="' + (isNew ? 'row-new' : '') + '" data-eval-idx="' + idx + '">' +
-        '<td><button type="button" class="arm-btn arm-btn-icon details-btn" data-eval-idx="' + idx + '" title="View details">☰</button></td>' +
+      return '<tr class="' + (isNew ? 'row-new' : '') + '">' +
+        '<td><button type="button" class="arm-btn arm-btn-icon details-btn" data-eval-id="' + escapeHtml(r.evaluation_id) + '" title="View details">☰</button></td>' +
         '<td class="font-semibold text-slate-900">' + escapeHtml(r.display_name) + '</td>' +
-        '<td class="text-slate-600">' + escapeHtml(r.email || '—') + '</td>' +
-        '<td class="text-slate-600">' + escapeHtml(r.location || '—') + '</td>' +
         '<td><span class="' + scoreBadgeClass(r.overall_score) + '">' + r.overall_score + '</span></td>' +
         '<td>' + rec + '</td>' +
-        '<td class="text-slate-600 text-sm leading-relaxed max-w-md">' + summary + '</td>' +
+        '<td><span class="' + scoreSmClass(r.skills_match) + '">' + r.skills_match + '</span></td>' +
+        '<td><span class="' + scoreSmClass(r.experience_match) + '">' + r.experience_match + '</span></td>' +
+        '<td><span class="' + scoreSmClass(r.seniority_match) + '">' + r.seniority_match + '</span></td>' +
+        '<td><span class="' + scoreSmClass(r.education_match) + '">' + r.education_match + '</span></td>' +
+        '<td class="text-slate-600 text-sm leading-relaxed max-w-xs">' + summary + '</td>' +
         '<td><a class="text-indigo-600 hover:text-indigo-800 font-medium text-sm" href="' + escapeHtml(r.resume_url) + '" target="_blank" rel="noopener">View ↗</a></td>' +
         '</tr>';
     }).join('');
@@ -330,13 +548,14 @@
     } else if (rowsHtml) {
       body.innerHTML = rowsHtml + skeletons;
     } else {
-      body.innerHTML = '<tr><td colspan="8" class="arm-empty">Waiting for first evaluation result…</td></tr>' + skeletons;
+      body.innerHTML = '<tr><td colspan="' + COLS + '" class="arm-empty">Waiting for first evaluation result…</td></tr>' + skeletons;
     }
 
     body.querySelectorAll('.details-btn').forEach(function (btn) {
       btn.addEventListener('click', function () {
-        var idx = Number(btn.getAttribute('data-eval-idx'));
-        openModal(state.evaluations[idx]);
+        var id = btn.getAttribute('data-eval-id');
+        var r = state.evaluations.find(function (e) { return e.evaluation_id === id; });
+        openModal(r);
       });
     });
   }
@@ -404,6 +623,15 @@
   async function loadJobs() {
     state.jobs = await API.listJobs();
     renderJobs();
+    if (!state.selectedJobId && state.jobs.length) {
+      var sorted = state.jobs.slice().sort(function (a, b) {
+        return String(b.created_at || '').localeCompare(String(a.created_at || ''));
+      });
+      state.selectedJobId = sorted[0].job_id;
+      $('job-select').value = state.selectedJobId;
+      updateJobFolderLink();
+      await refreshJobData(true);
+    }
   }
 
   async function refreshJobData(silent) {
@@ -413,7 +641,7 @@
       state.queueStatus = null;
       state.knownEvalIds = {};
       renderCandidates();
-      renderResults();
+      renderResultsPanel();
       renderProcessingBanner();
       updateAnalyzeHint();
       stopPolling();
@@ -432,7 +660,7 @@
     state.queueStatus = results[2] || null;
 
     renderCandidates();
-    renderResults();
+    renderResultsPanel();
     renderProcessingBanner();
     updateAnalyzeHint();
     managePolling();
@@ -570,12 +798,59 @@
     }
   }
 
+  function bindFilterEvents() {
+    var filterIds = [
+      'filter-global-search', 'filter-name', 'filter-overall-min',
+      'filter-recommended', 'filter-skills-min', 'filter-exp-min',
+      'filter-senior-min', 'filter-edu-min'
+    ];
+    filterIds.forEach(function (id) {
+      var el = $(id);
+      if (!el) return;
+      var evt = el.tagName === 'SELECT' ? 'change' : 'input';
+      el.addEventListener(evt, function () {
+        renderResults();
+      });
+    });
+
+    $('btn-clear-filters').addEventListener('click', function () {
+      resetResultsFilters();
+      renderResults();
+    });
+
+    document.querySelectorAll('.arm-quick-filter').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var key = btn.getAttribute('data-filter');
+        if (!state.resultsFilters.quick) state.resultsFilters.quick = {};
+        state.resultsFilters.quick[key] = !state.resultsFilters.quick[key];
+        btn.classList.toggle('active', state.resultsFilters.quick[key]);
+        renderResults();
+      });
+    });
+
+    document.querySelectorAll('.arm-sort-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var key = btn.getAttribute('data-sort');
+        if (state.resultsFilters.sortKey === key) {
+          state.resultsFilters.sortDir = state.resultsFilters.sortDir === 'asc' ? 'desc' : 'asc';
+        } else {
+          state.resultsFilters.sortKey = key;
+          state.resultsFilters.sortDir = key === 'display_name' ? 'asc' : 'desc';
+        }
+        syncFiltersToUI();
+        renderResults();
+      });
+    });
+  }
+
   function bindEvents() {
+    bindFilterEvents();
     $('job-form').addEventListener('submit', onCreateJob);
     $('job-select').addEventListener('change', function () {
       state.selectedJobId = $('job-select').value;
       state.knownEvalIds = {};
       state.evalTracking = false;
+      resetResultsFilters();
       updateJobFolderLink();
       refreshJobData(false).catch(function (e) { showToast(e.message, true); });
     });
