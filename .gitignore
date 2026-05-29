@@ -1,0 +1,13 @@
+# Apps Script local clasp config (copy from .clasp.json.example)
+apps-script/.clasp.json
+
+# OS
+.DS_Store
+
+# Editor
+.idea/
+.vscode/
+*.swp
+
+# Logs
+*.log

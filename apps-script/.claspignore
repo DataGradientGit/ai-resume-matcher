@@ -1,0 +1,6 @@
+**/**
+!*.gs
+!*.html
+!appsscript.json
+*.js
+.clasp.json.example
